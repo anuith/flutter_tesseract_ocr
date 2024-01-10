@@ -44,8 +44,8 @@ class _MyHomePageState extends State<MyHomePage> {
     "ch_sim": "https://tesseract.projectnaptha.com/img/chi_sim.png",
     "ru": "https://tesseract.projectnaptha.com/img/rus.png",
   };
-  var LangList = ["kor", "eng", "deu", "chi_sim"];
-  var selectList = ["eng", "kor"];
+  var LangList = ["eng", "tha", "kor", "deu", "chi_sim"];
+  var selectList = ["eng", "tha"];
   String path = "";
   bool bload = false;
 
