@@ -1,6 +1,7 @@
 package io.paratoner.flutter_tesseract_ocr;
 
 import com.googlecode.tesseract.android.TessBaseAPI;
+import com.googlecode.tesseract.android.ResultIterator;
 
 import androidx.annotation.NonNull;
 
@@ -9,6 +10,9 @@ import java.io.File;
 import java.util.Map.*;
 import java.util.Map;
 
+import org.json.JSONObject;
+import org.json.JSONArray;
+
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
@@ -16,6 +20,7 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -48,6 +53,7 @@ public class FlutterTesseractOcrPlugin implements FlutterPlugin, MethodCallHandl
     switch (call.method) {
       case "extractText":
       case "extractHocr":
+      case "extractTextBlocks":
         final String tessDataPath = call.argument("tessData");
         final String imagePath = call.argument("imagePath");
         final Map<String, String> args = call.argument("args");
@@ -76,16 +82,89 @@ public class FlutterTesseractOcrPlugin implements FlutterPlugin, MethodCallHandl
         final File tempFile = new File(imagePath);
         baseApi.setPageSegMode(psm);
 
-        new MyRunnable(baseApi, tempFile, recognizedText, result, call.method.equals("extractHocr")).run();
+        if (call.method.equals("extractTextBlocks")) {
+            new TextBlocksRunnable(baseApi, tempFile, recognizedText, result).run();
+        } else {
+            new MyRunnable(baseApi, tempFile, recognizedText, result, call.method.equals("extractHocr")).run();
+        }
+
         break;
 
       default:
         result.notImplemented();
     }
   }
-
-
 }
+
+class TextBlocksRunnable implements Runnable {
+    private TessBaseAPI baseApi;
+    private File tempFile;
+    private String[] recognizedText;
+    private Result result;
+
+    public TextBlocksRunnable(TessBaseAPI baseApi, File tempFile, String[] recognizedText, Result result) {
+        this.baseApi = baseApi;
+        this.tempFile = tempFile;
+        this.recognizedText = recognizedText;
+        this.result = result;
+    }
+
+    @Override
+    public void run() {
+        try {
+            this.baseApi.setImage(this.tempFile);
+            recognizedText[0] = this.baseApi.getUTF8Text();
+            JSONArray blocks = new JSONArray();
+
+            final int level = TessBaseAPI.PageIteratorLevel.RIL_BLOCK;
+
+            // Get the result iterator
+            ResultIterator resultIterator = this.baseApi.getResultIterator();
+            resultIterator.begin();
+
+            do {
+                // Get text and bounding rectangle for each block
+                String text = resultIterator.getUTF8Text(level);
+                Rect rect = resultIterator.getBoundingRect(level);
+
+                // Create a JSON object for each block with its rectangle
+                JSONObject box = new JSONObject();
+                box.put("x", rect.left);
+                box.put("y", rect.top);
+                box.put("w", rect.width());
+                box.put("h", rect.height());
+
+                JSONObject block = new JSONObject();
+                block.put("text", text);
+                block.put("box", box);
+
+                // Add the JSON object to the array
+                blocks.put(block);
+            } while (resultIterator.next(level));
+
+            this.baseApi.stop();
+
+            // Create a JSON object to send both the recognized text and bounding boxes
+            JSONObject resultData = new JSONObject();
+            resultData.put("fullText", recognizedText[0]);
+            resultData.put("blocks", blocks);
+            this.sendSuccess(resultData.toString());
+        } catch (Exception e) {
+        }
+    }
+
+    public void sendSuccess(String msg) {
+        final String str = msg;
+        final Result res = this.result;
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                res.success(str);
+            }
+        });
+    }
+}
+
 class MyRunnable implements Runnable {
   private TessBaseAPI baseApi;
   private File tempFile;

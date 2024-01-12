@@ -33,6 +33,25 @@ class FlutterTesseractOcr {
     return extractText;
   }
 
+  /// image to text with blocks information
+  ///```
+  /// String _ocrText = await FlutterTesseractOcr.extractTextBlocks(url, language: langs, args: {
+  ///    "preserve_interword_spaces": "1",});
+  ///```
+  static Future<String> extractTextBlocks(String imagePath,
+      {String? language, Map? args}) async {
+    assert(await File(imagePath).exists(), true);
+    final String tessData = await _loadTessData();
+    final String json =
+        await _channel.invokeMethod('extractTextBlocks', <String, dynamic>{
+      'imagePath': imagePath,
+      'tessData': tessData,
+      'language': language,
+      'args': args,
+    });
+    return json;
+  }
+
   /// image to  html text(hocr)
   ///```
   /// String _ocrHocr = await FlutterTesseractOcr.extractText(url, language: langs, args: {

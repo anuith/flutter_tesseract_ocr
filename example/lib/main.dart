@@ -89,7 +89,7 @@ class _MyHomePageState extends State<MyHomePage> {
     bload = true;
     setState(() {});
 
-    _ocrText = await FlutterTesseractOcr.extractText(url, language: langs, args: {
+    _ocrText = await FlutterTesseractOcr.extractTextBlocks(url, language: langs, args: {
       "preserve_interword_spaces": "1",
     });
     //  ========== Test performance  ==========
