@@ -20,6 +20,7 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 
+import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
@@ -62,16 +63,16 @@ public class FlutterTesseractOcrPlugin implements FlutterPlugin, MethodCallHandl
           DEFAULT_LANGUAGE = call.argument("language");
         }
         final String[] recognizedText = new String[1];
-        if(baseApi == null || !lastLanguage.equals(DEFAULT_LANGUAGE)){
+        if (baseApi == null || !lastLanguage.equals(DEFAULT_LANGUAGE)) {
           baseApi = new TessBaseAPI();
           baseApi.init(tessDataPath, DEFAULT_LANGUAGE);
           lastLanguage = DEFAULT_LANGUAGE;
         }
 
         int psm = DEFAULT_PAGE_SEG_MODE;
-        if(args != null){
+        if (args != null) {
           for (Map.Entry<String, String> entry : args.entrySet()) {
-            if(!entry.getKey().equals("psm")) {
+            if (!entry.getKey().equals("psm")) {
               baseApi.setVariable(entry.getKey(), entry.getValue());
             } else {
               psm = Integer.parseInt(entry.getValue());
@@ -83,9 +84,9 @@ public class FlutterTesseractOcrPlugin implements FlutterPlugin, MethodCallHandl
         baseApi.setPageSegMode(psm);
 
         if (call.method.equals("extractTextBlocks")) {
-            new TextBlocksRunnable(baseApi, tempFile, recognizedText, result).run();
+          new TextBlocksRunnable(baseApi, tempFile, recognizedText, result).run();
         } else {
-            new MyRunnable(baseApi, tempFile, recognizedText, result, call.method.equals("extractHocr")).run();
+          new MyRunnable(baseApi, tempFile, recognizedText, result, call.method.equals("extractHocr")).run();
         }
 
         break;
@@ -97,72 +98,88 @@ public class FlutterTesseractOcrPlugin implements FlutterPlugin, MethodCallHandl
 }
 
 class TextBlocksRunnable implements Runnable {
-    private TessBaseAPI baseApi;
-    private File tempFile;
-    private String[] recognizedText;
-    private Result result;
+  private TessBaseAPI baseApi;
+  private File tempFile;
+  private String[] recognizedText;
+  private Result result;
 
-    public TextBlocksRunnable(TessBaseAPI baseApi, File tempFile, String[] recognizedText, Result result) {
-        this.baseApi = baseApi;
-        this.tempFile = tempFile;
-        this.recognizedText = recognizedText;
-        this.result = result;
+  public TextBlocksRunnable(TessBaseAPI baseApi, File tempFile, String[] recognizedText, Result result) {
+    this.baseApi = baseApi;
+    this.tempFile = tempFile;
+    this.recognizedText = recognizedText;
+    this.result = result;
+  }
+
+  @Override
+  public void run() {
+    try {
+      // Get image dimension without loading the image
+      BitmapFactory.Options options = new BitmapFactory.Options();
+      options.inJustDecodeBounds = true;
+      BitmapFactory.decodeFile(this.tempFile.getAbsolutePath(), options);
+
+      int imageWidth = options.outWidth;
+      int imageHeight = options.outHeight;
+      
+      this.baseApi.setImage(this.tempFile);
+      recognizedText[0] = this.baseApi.getUTF8Text();
+      JSONArray blocks = new JSONArray();
+
+      final int level = TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE;
+
+      // Get the result iterator
+      ResultIterator resultIterator = this.baseApi.getResultIterator();
+      resultIterator.begin();
+
+      do {
+        // Get text and bounding rectangle for each block
+        String text = resultIterator.getUTF8Text(level);
+        Rect rect = resultIterator.getBoundingRect(level);
+
+        // Calculate the proportion of each coordinate relative to the original image size
+        double leftProportional = (double) rect.left / imageWidth;
+        double topProportional = (double) rect.top / imageHeight;
+        double widthProportional = (double) rect.width() / imageWidth;
+        double heightProportional = (double) rect.height() / imageHeight;
+
+        // Create a JSON object for each block with its rectangle
+        JSONObject box = new JSONObject();
+        box.put("x", leftProportional);
+        box.put("y", topProportional);
+        box.put("w", widthProportional);
+        box.put("h", heightProportional);
+
+        JSONObject block = new JSONObject();
+        block.put("text", text);
+        block.put("box", box);
+
+        // Add the JSON object to the array
+        blocks.put(block);
+      } while (resultIterator.next(level));
+
+      this.baseApi.stop();
+
+      // Create a JSON object to send both the recognized text and bounding boxes
+      JSONObject resultData = new JSONObject();
+      resultData.put("fullText", recognizedText[0]);
+      resultData.put("imgWidth", imageWidth);
+      resultData.put("imgHeight", imageHeight);
+      resultData.put("blocks", blocks);
+      this.sendSuccess(resultData.toString());
+    } catch (Exception e) {
     }
+  }
 
-    @Override
-    public void run() {
-        try {
-            this.baseApi.setImage(this.tempFile);
-            recognizedText[0] = this.baseApi.getUTF8Text();
-            JSONArray blocks = new JSONArray();
-
-            final int level = TessBaseAPI.PageIteratorLevel.RIL_BLOCK;
-
-            // Get the result iterator
-            ResultIterator resultIterator = this.baseApi.getResultIterator();
-            resultIterator.begin();
-
-            do {
-                // Get text and bounding rectangle for each block
-                String text = resultIterator.getUTF8Text(level);
-                Rect rect = resultIterator.getBoundingRect(level);
-
-                // Create a JSON object for each block with its rectangle
-                JSONObject box = new JSONObject();
-                box.put("x", rect.left);
-                box.put("y", rect.top);
-                box.put("w", rect.width());
-                box.put("h", rect.height());
-
-                JSONObject block = new JSONObject();
-                block.put("text", text);
-                block.put("box", box);
-
-                // Add the JSON object to the array
-                blocks.put(block);
-            } while (resultIterator.next(level));
-
-            this.baseApi.stop();
-
-            // Create a JSON object to send both the recognized text and bounding boxes
-            JSONObject resultData = new JSONObject();
-            resultData.put("fullText", recognizedText[0]);
-            resultData.put("blocks", blocks);
-            this.sendSuccess(resultData.toString());
-        } catch (Exception e) {
-        }
-    }
-
-    public void sendSuccess(String msg) {
-        final String str = msg;
-        final Result res = this.result;
-        new Handler(Looper.getMainLooper()).post(new Runnable() {
-            @Override
-            public void run() {
-                res.success(str);
-            }
-        });
-    }
+  public void sendSuccess(String msg) {
+    final String str = msg;
+    final Result res = this.result;
+    new Handler(Looper.getMainLooper()).post(new Runnable() {
+      @Override
+      public void run() {
+        res.success(str);
+      }
+    });
+  }
 }
 
 class MyRunnable implements Runnable {

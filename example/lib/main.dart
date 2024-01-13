@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
+import 'package:flutter_tesseract_ocr/result_types.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 
@@ -89,9 +90,11 @@ class _MyHomePageState extends State<MyHomePage> {
     bload = true;
     setState(() {});
 
-    _ocrText = await FlutterTesseractOcr.extractTextBlocks(url, language: langs, args: {
+    final OcrResult result = await FlutterTesseractOcr.extractTextBlocks(url, language: langs, args: {
       "preserve_interword_spaces": "1",
     });
+
+    _ocrText = result.fullText;
     //  ========== Test performance  ==========
     // DateTime before1 = DateTime.now();
     // print('init : start');

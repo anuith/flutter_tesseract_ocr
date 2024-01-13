@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_tesseract_ocr/result_types.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart';
 
@@ -38,7 +39,7 @@ class FlutterTesseractOcr {
   /// String _ocrText = await FlutterTesseractOcr.extractTextBlocks(url, language: langs, args: {
   ///    "preserve_interword_spaces": "1",});
   ///```
-  static Future<String> extractTextBlocks(String imagePath,
+  static Future<OcrResult> extractTextBlocks(String imagePath,
       {String? language, Map? args}) async {
     assert(await File(imagePath).exists(), true);
     final String tessData = await _loadTessData();
@@ -49,7 +50,10 @@ class FlutterTesseractOcr {
       'language': language,
       'args': args,
     });
-    return json;
+
+    final OcrResult model = OcrResult.fromJson(json);
+
+    return model;
   }
 
   /// image to  html text(hocr)
