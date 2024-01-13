@@ -7,7 +7,6 @@ import androidx.annotation.NonNull;
 
 import java.io.File;
 
-import java.util.Map.*;
 import java.util.Map;
 
 import org.json.JSONObject;
@@ -31,6 +30,7 @@ public class FlutterTesseractOcrPlugin implements FlutterPlugin, MethodCallHandl
   String lastLanguage = "";
 
   private MethodChannel channel;
+
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
     // TODO: your plugin is now attached to a Flutter experience.
@@ -84,7 +84,9 @@ public class FlutterTesseractOcrPlugin implements FlutterPlugin, MethodCallHandl
         baseApi.setPageSegMode(psm);
 
         if (call.method.equals("extractTextBlocks")) {
-          new TextBlocksRunnable(baseApi, tempFile, recognizedText, result).run();
+          final String level = call.argument("level");
+          final int iteratorLevel = mapIteratorLevel(level != null ? level : "block");
+          new TextBlocksRunnable(baseApi, tempFile, recognizedText, result, iteratorLevel).run();
         } else {
           new MyRunnable(baseApi, tempFile, recognizedText, result, call.method.equals("extractHocr")).run();
         }
@@ -95,19 +97,36 @@ public class FlutterTesseractOcrPlugin implements FlutterPlugin, MethodCallHandl
         result.notImplemented();
     }
   }
+  private int mapIteratorLevel(String level) {
+    switch (level) {
+      case "symbol":
+        return TessBaseAPI.PageIteratorLevel.RIL_SYMBOL;
+      case "word":
+        return TessBaseAPI.PageIteratorLevel.RIL_WORD;
+      case "paragraph":
+        return TessBaseAPI.PageIteratorLevel.RIL_PARA;
+      case "textline":
+        return TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE;
+      default:
+      case "block":
+        return TessBaseAPI.PageIteratorLevel.RIL_BLOCK;
+    }
+  }
 }
 
 class TextBlocksRunnable implements Runnable {
-  private TessBaseAPI baseApi;
-  private File tempFile;
-  private String[] recognizedText;
-  private Result result;
+  final private TessBaseAPI baseApi;
+  final private File tempFile;
+  final private String[] recognizedText;
+  final private Result result;
+  final private int iteratorLevel;
 
-  public TextBlocksRunnable(TessBaseAPI baseApi, File tempFile, String[] recognizedText, Result result) {
+  public TextBlocksRunnable(TessBaseAPI baseApi, File tempFile, String[] recognizedText, Result result, int iteratorLevel) {
     this.baseApi = baseApi;
     this.tempFile = tempFile;
     this.recognizedText = recognizedText;
     this.result = result;
+    this.iteratorLevel = iteratorLevel;
   }
 
   @Override
@@ -125,16 +144,14 @@ class TextBlocksRunnable implements Runnable {
       recognizedText[0] = this.baseApi.getUTF8Text();
       JSONArray blocks = new JSONArray();
 
-      final int level = TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE;
-
       // Get the result iterator
       ResultIterator resultIterator = this.baseApi.getResultIterator();
       resultIterator.begin();
 
       do {
         // Get text and bounding rectangle for each block
-        String text = resultIterator.getUTF8Text(level);
-        Rect rect = resultIterator.getBoundingRect(level);
+        String text = resultIterator.getUTF8Text(iteratorLevel);
+        Rect rect = resultIterator.getBoundingRect(iteratorLevel);
 
         // Calculate the proportion of each coordinate relative to the original image size
         double leftProportional = (double) rect.left / imageWidth;
@@ -155,7 +172,7 @@ class TextBlocksRunnable implements Runnable {
 
         // Add the JSON object to the array
         blocks.put(block);
-      } while (resultIterator.next(level));
+      } while (resultIterator.next(iteratorLevel));
 
       this.baseApi.stop();
 

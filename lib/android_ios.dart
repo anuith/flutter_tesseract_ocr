@@ -9,6 +9,14 @@ import 'package:flutter_tesseract_ocr/result_types.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart';
 
+enum TesseractIteratorLevel {
+  block,
+  textLine,
+  paragraph,
+  word,
+  symbol,
+}
+
 class FlutterTesseractOcr {
   static const String TESS_DATA_CONFIG = 'assets/tessdata_config.json';
   static const String TESS_DATA_PATH = 'assets/tessdata';
@@ -34,13 +42,25 @@ class FlutterTesseractOcr {
     return extractText;
   }
 
+  static final _levelStringMap = {
+    TesseractIteratorLevel.block: 'block',
+    TesseractIteratorLevel.textLine: 'textline',
+    TesseractIteratorLevel.paragraph: 'paragraph',
+    TesseractIteratorLevel.word: 'word',
+    TesseractIteratorLevel.symbol: 'symbol',
+  };
+
   /// image to text with blocks information
   ///```
   /// String _ocrText = await FlutterTesseractOcr.extractTextBlocks(url, language: langs, args: {
   ///    "preserve_interword_spaces": "1",});
   ///```
-  static Future<OcrResult> extractTextBlocks(String imagePath,
-      {String? language, Map? args}) async {
+  static Future<OcrResult> extractTextBlocks(
+    String imagePath, {
+    String? language,
+    Map? args,
+    TesseractIteratorLevel level = TesseractIteratorLevel.block,
+  }) async {
     assert(await File(imagePath).exists(), true);
     final String tessData = await _loadTessData();
     final String json =
@@ -49,6 +69,7 @@ class FlutterTesseractOcr {
       'tessData': tessData,
       'language': language,
       'args': args,
+      'level': _levelStringMap[level] ?? "block",
     });
 
     final OcrResult model = OcrResult.fromJson(json);
